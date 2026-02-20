@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sound Visualizer</title>
+    <style>
+        body {
+            margin: 0;
+            background: #0a0a0a;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            width: 800px;
+            max-width: 90%;
+            height: 400px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            background: #111;
+        }
+        .controls {
+            margin-top: 2rem;
+            text-align: center;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            background: #3498db;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        #errorMessage {
+            color: #e74c3c;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Sound Visualization App</h1>
+    <canvas id="visualizer"></canvas>
+    
+    <div class="controls">
+        <button id="startBtn">Start Visualization</button>
+        <div id="errorMessage">Error: Microphone access denied or not supported on this site.</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const errorMsg = document.getElementById('errorMessage');
+
+        // Set actual canvas resolution to match display size to prevent blurriness
+        canvas.width = 800;
+        canvas.height = 400;
+
+        let audioCtx;
+        let analyser;
+        let source;
+        let dataArray;
+
+        function initAudio() {
+            // Check if browser supports audio context
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) {
+                showError("Your browser doesn't support Web Audio API.");
+                return;
+            }
+
+            audioCtx = new AudioContext();
+            analyser = audioCtx.createAnalyser();
+
+            // Request microphone access
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        source = audioCtx.createMediaStreamSource(stream);
+                        source.connect(analyser);
+                        analyser.fftSize = 256;
+                        const bufferLength = analyser.frequencyBinCount;
+                        dataArray = new Uint8Array(bufferLength);
+                        
+                        startBtn.innerText = "Listening...";
+                        startBtn.style.background = "#2ecc71"; // Turn green when active
+                        errorMsg.style.display = "none";
+                        
+                        draw();
+                    })
+                    .catch(err => {
+                        console.error("Mic error:", err);
+                        showError("Microphone access denied. You must run this on a secure HTTPS site.");
+                    });
+            } else {
+                showError("Microphone API not supported in this browser/environment.");
+            }
+        }
+
+        function showError(msg) {
+            errorMsg.innerText = msg;
+            errorMsg.style.display = "block";
+            startBtn.innerText = "Failed";
+            startBtn.style.background = "#e74c3c";
+        }
+
+        function draw() {
+            requestAnimationFrame(draw);
+            analyser.getByteFrequencyData(dataArray);
+
+            // Clear the canvas each frame
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const barWidth = (canvas.width / dataArray.length) * 2.5;
+            let barHeight;
+            let x = 0;
+
+            for(let i = 0; i < dataArray.length; i++) {
+                barHeight = dataArray[i]; // Adjusted for better height mapping
+                
+                // Create a color gradient based on the bar height
+                ctx.fillStyle = `rgb(${barHeight + 50}, 100, 200)`;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                
+                x += barWidth + 2; // Added gap between bars
+            }
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (!audioCtx) {
+                initAudio();
+            } else if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        });
+    </script>
+</body>
+</html>
