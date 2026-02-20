@@ -3,150 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sound Visualizer</title>
+    <title>Sand Vibration Visualizer</title>
     <style>
-        body {
-            margin: 0;
-            background: #0a0a0a;
-            color: white;
-            font-family: 'Inter', sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            overflow: hidden;
-        }
-        canvas {
-            width: 800px;
-            max-width: 90%;
-            height: 400px;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            background: #111;
-        }
-        .controls {
-            margin-top: 2rem;
-            text-align: center;
-        }
-        button {
-            padding: 12px 24px;
-            font-size: 1rem;
-            background: #3498db;
-            border: none;
-            border-radius: 8px;
-            color: white;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        button:hover {
-            background: #2980b9;
-        }
-        #errorMessage {
-            color: #e74c3c;
-            margin-top: 1rem;
-            font-size: 0.9rem;
-            display: none;
-        }
+        body { margin: 0; background: #0a0a0a; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+        #overlay { z-index: 10; background: rgba(0, 0, 0, 0.85); padding: 2rem; border-radius: 20px; text-align: center; border: 1px solid #333; backdrop-filter: blur(10px); transition: opacity 0.5s; }
+        .hidden { opacity: 0; pointer-events: none; }
+        input[type="file"] { margin: 20px 0; color: #888; }
+        h2 { margin-top: 0; font-weight: 300; letter-spacing: 4px; color: #00d4ff; }
+        audio { filter: invert(1); opacity: 0.7; }
     </style>
 </head>
 <body>
 
-    <h1>Sound Visualization App</h1>
-    <canvas id="visualizer"></canvas>
-    
-    <div class="controls">
-        <button id="startBtn">Start Visualization</button>
-        <div id="errorMessage">Error: Microphone access denied or not supported on this site.</div>
+    <div id="overlay">
+        <h2>SAND VISUALIZER</h2>
+        <p>Upload an MP3 to see the patterns</p>
+        <input type="file" id="audioUpload" accept="audio/*">
+        <br>
+        <audio id="audioPlayer" controls></audio>
     </div>
 
+    <canvas id="canvas"></canvas>
+
     <script>
-        const canvas = document.getElementById('visualizer');
+        const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const startBtn = document.getElementById('startBtn');
-        const errorMsg = document.getElementById('errorMessage');
+        const audioUpload = document.getElementById('audioUpload');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const overlay = document.getElementById('overlay');
 
-        // Set actual canvas resolution to match display size to prevent blurriness
-        canvas.width = 800;
-        canvas.height = 400;
+        let audioCtx, analyser, dataArray, source;
+        let particles = [];
+        const particleCount = 4000; // The high density we liked
 
-        let audioCtx;
-        let analyser;
-        let source;
-        let dataArray;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-        function initAudio() {
-            // Check if browser supports audio context
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContext) {
-                showError("Your browser doesn't support Web Audio API.");
-                return;
+        class Particle {
+            constructor() {
+                this.init();
             }
+            init() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = 1.2;
+            }
+            update(intensity, freq) {
+                // Chladni Figure Math: sin(pi*n*x) * sin(pi*m*y)
+                // We use the audio frequency to shift the 'n' and 'm' values
+                let n = freq * 0.02;
+                let m = freq * 0.015;
+                
+                let target = Math.sin(this.x * 0.01 * n) * Math.sin(this.y * 0.01 * m);
+                
+                // If the "plate" is vibrating (intensity), particles jitter randomly
+                // and then settle into the "still" spots (the target lines)
+                if (intensity > 10) {
+                    this.x += (Math.random() - 0.5) * (intensity * 0.2);
+                    this.y += (Math.random() - 0.5) * (intensity * 0.2);
+                }
 
-            audioCtx = new AudioContext();
-            analyser = audioCtx.createAnalyser();
+                this.x += target * 1.5;
+                this.y += target * 1.5;
 
-            // Request microphone access
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ audio: true })
-                    .then(stream => {
-                        source = audioCtx.createMediaStreamSource(stream);
-                        source.connect(analyser);
-                        analyser.fftSize = 256;
-                        const bufferLength = analyser.frequencyBinCount;
-                        dataArray = new Uint8Array(bufferLength);
-                        
-                        startBtn.innerText = "Listening...";
-                        startBtn.style.background = "#2ecc71"; // Turn green when active
-                        errorMsg.style.display = "none";
-                        
-                        draw();
-                    })
-                    .catch(err => {
-                        console.error("Mic error:", err);
-                        showError("Microphone access denied. You must run this on a secure HTTPS site.");
-                    });
-            } else {
-                showError("Microphone API not supported in this browser/environment.");
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+            }
+            draw() {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fillRect(this.x, this.y, this.size, this.size);
             }
         }
 
-        function showError(msg) {
-            errorMsg.innerText = msg;
-            errorMsg.style.display = "block";
-            startBtn.innerText = "Failed";
-            startBtn.style.background = "#e74c3c";
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
         }
 
-        function draw() {
-            requestAnimationFrame(draw);
+        audioUpload.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                audioPlayer.src = URL.createObjectURL(file);
+                setupAudio();
+                overlay.classList.add('hidden');
+            }
+        });
+
+        function setupAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                source = audioCtx.createMediaElementSource(audioPlayer);
+                analyser = audioCtx.createAnalyser();
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                createParticles();
+                animate();
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
             analyser.getByteFrequencyData(dataArray);
 
-            // Clear the canvas each frame
-            ctx.fillStyle = '#111';
+            // Get average volume and dominant frequency peak
+            let sum = 0;
+            let maxVal = 0;
+            let freqPeak = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+                if (dataArray[i] > maxVal) {
+                    maxVal = dataArray[i];
+                    freqPeak = i;
+                }
+            }
+            let avg = sum / dataArray.length;
+
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.15)'; // Motion blur trail
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            const barWidth = (canvas.width / dataArray.length) * 2.5;
-            let barHeight;
-            let x = 0;
-
-            for(let i = 0; i < dataArray.length; i++) {
-                barHeight = dataArray[i]; // Adjusted for better height mapping
-                
-                // Create a color gradient based on the bar height
-                ctx.fillStyle = `rgb(${barHeight + 50}, 100, 200)`;
-                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-                
-                x += barWidth + 2; // Added gap between bars
-            }
+            particles.forEach(p => {
+                p.update(avg, freqPeak);
+                p.draw();
+            });
         }
 
-        startBtn.addEventListener('click', () => {
-            if (!audioCtx) {
-                initAudio();
-            } else if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            createParticles();
         });
     </script>
 </body>
