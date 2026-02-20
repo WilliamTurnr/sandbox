@@ -3,85 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sand Vibration Visualizer</title>
+    <title>CYMATICSMP3 // Audio Analysis</title>
     <style>
-        body { margin: 0; background: #0a0a0a; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
-        #overlay { z-index: 10; background: rgba(0, 0, 0, 0.85); padding: 2rem; border-radius: 20px; text-align: center; border: 1px solid #333; backdrop-filter: blur(10px); transition: opacity 0.5s; }
-        .hidden { opacity: 0; pointer-events: none; }
-        input[type="file"] { margin: 20px 0; color: #888; }
-        h2 { margin-top: 0; font-weight: 300; letter-spacing: 4px; color: #00d4ff; }
-        audio { filter: invert(1); opacity: 0.7; }
+        :root { --accent: #00f2ff; --bg: #050505; --panel: rgba(20, 20, 20, 0.8); }
+        body { margin: 0; background: var(--bg); color: white; font-family: 'IBM Plex Mono', monospace; overflow: hidden; }
+        
+        /* UI Layers */
+        #canvas-container { position: absolute; top: 0; left: 0; z-index: 1; }
+        #ui-layer { position: relative; z-index: 10; display: flex; justify-content: space-between; padding: 30px; height: 90vh; pointer-events: none; }
+        
+        .panel { background: var(--panel); border: 1px solid #333; padding: 20px; border-radius: 4px; pointer-events: auto; backdrop-filter: blur(10px); }
+        
+        /* Sidebar Styles */
+        .sidebar { width: 280px; display: flex; flex-direction: column; gap: 20px; }
+        h1 { font-size: 18px; letter-spacing: 4px; color: var(--accent); margin: 0; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin: 5px 0; }
+        .stat-value { color: var(--accent); }
+        
+        /* Controls */
+        input[type="file"] { background: #111; border: 1px dashed #444; padding: 10px; width: 100%; box-sizing: border-box; font-family: inherit; color: #888; cursor: pointer; }
+        .control-group { margin-top: 15px; }
+        label { font-size: 10px; text-transform: uppercase; color: #666; display: block; margin-bottom: 5px; }
+        
+        audio { width: 100%; height: 35px; margin-top: 10px; filter: invert(1); }
+        
+        .viz-footer { position: absolute; bottom: 30px; left: 30px; font-size: 10px; color: #444; letter-spacing: 2px; }
     </style>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;500&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    <div id="overlay">
-        <h2>SAND VISUALIZER</h2>
-        <p>Upload an MP3 to see the patterns</p>
-        <input type="file" id="audioUpload" accept="audio/*">
-        <br>
-        <audio id="audioPlayer" controls></audio>
+    <div id="canvas-container">
+        <canvas id="mainCanvas"></canvas>
     </div>
 
-    <canvas id="canvas"></canvas>
+    <div id="ui-layer">
+        <div class="sidebar panel">
+            <h1>CYMATICSMP3</h1>
+            
+            <div class="control-group">
+                <label>Input Source</label>
+                <input type="file" id="audioUpload" accept="audio/*">
+                <audio id="audioPlayer" controls></audio>
+            </div>
+
+            <div class="control-group">
+                <label>Analysis Specs</label>
+                <div class="stat-row">Status: <span id="status" class="stat-value">STANDBY</span></div>
+                <div class="stat-row">Frequency: <span id="freq-val" class="stat-value">0 Hz</span></div>
+                <div class="stat-row">Gain: <span id="gain-val" class="stat-value">0 dB</span></div>
+                <div class="stat-row">Particles: <span class="stat-value">8,000</span></div>
+            </div>
+
+            <div class="control-group" style="border-top: 1px solid #333; padding-top: 15px;">
+                <label>Plate Material</label>
+                <select id="plateType" style="width:100%; background:#111; color:white; border:1px solid #333; padding:5px;">
+                    <option value="steel">Hardened Steel</option>
+                    <option value="brass">Polished Brass</option>
+                    <option value="glass">Silica Glass</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="viz-footer">CORE_ENGINE_V2.0 // ROMEO_MI_STUDIO</div>
 
     <script>
-        const canvas = document.getElementById('canvas');
+        const canvas = document.getElementById('mainCanvas');
         const ctx = canvas.getContext('2d');
         const audioUpload = document.getElementById('audioUpload');
         const audioPlayer = document.getElementById('audioPlayer');
-        const overlay = document.getElementById('overlay');
+        
+        // UI elements for updates
+        const statusEl = document.getElementById('status');
+        const freqEl = document.getElementById('freq-val');
+        const gainEl = document.getElementById('gain-val');
 
         let audioCtx, analyser, dataArray, source;
         let particles = [];
-        const particleCount = 4000; // The high density we liked
+        const particleCount = 8000;
 
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
         class Particle {
             constructor() {
-                this.init();
-            }
-            init() {
                 this.x = Math.random() * canvas.width;
                 this.y = Math.random() * canvas.height;
-                this.size = 1.2;
+                this.size = Math.random() * 1.5;
             }
-            update(intensity, freq) {
-                // Chladni Figure Math: sin(pi*n*x) * sin(pi*m*y)
-                // We use the audio frequency to shift the 'n' and 'm' values
-                let n = freq * 0.02;
-                let m = freq * 0.015;
+
+            update(avg, freq) {
+                // CYMATICS MATH (Chladni Nodal Points)
+                let n = (freq / 10) + 2;
+                let m = (freq / 15) + 1.5;
                 
-                let target = Math.sin(this.x * 0.01 * n) * Math.sin(this.y * 0.01 * m);
+                let val = Math.sin(this.x * 0.01 * n) * Math.sin(this.y * 0.01 * m);
                 
-                // If the "plate" is vibrating (intensity), particles jitter randomly
-                // and then settle into the "still" spots (the target lines)
-                if (intensity > 10) {
-                    this.x += (Math.random() - 0.5) * (intensity * 0.2);
-                    this.y += (Math.random() - 0.5) * (intensity * 0.2);
+                // Sensitivity to "vibration"
+                if (avg > 20) {
+                    this.x += (Math.random() - 0.5) * (avg * 0.1);
+                    this.y += (Math.random() - 0.5) * (avg * 0.1);
                 }
 
-                this.x += target * 1.5;
-                this.y += target * 1.5;
+                this.x += val * 1.2;
+                this.y += val * 1.2;
 
+                // Screen Wrap
                 if (this.x < 0) this.x = canvas.width;
                 if (this.x > canvas.width) this.x = 0;
                 if (this.y < 0) this.y = canvas.height;
                 if (this.y > canvas.height) this.y = 0;
             }
-            draw() {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                ctx.fillRect(this.x, this.y, this.size, this.size);
-            }
-        }
 
-        function createParticles() {
-            particles = [];
-            for (let i = 0; i < particleCount; i++) {
-                particles.push(new Particle());
+            draw() {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.fillRect(this.x, this.y, this.size, this.size);
             }
         }
 
@@ -89,21 +126,21 @@
             const file = this.files[0];
             if (file) {
                 audioPlayer.src = URL.createObjectURL(file);
-                setupAudio();
-                overlay.classList.add('hidden');
+                statusEl.innerText = "PROCESSING";
+                initAudio();
             }
         });
 
-        function setupAudio() {
+        function initAudio() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 source = audioCtx.createMediaElementSource(audioPlayer);
                 analyser = audioCtx.createAnalyser();
                 source.connect(analyser);
                 analyser.connect(audioCtx.destination);
-                analyser.fftSize = 256;
+                analyser.fftSize = 512;
                 dataArray = new Uint8Array(analyser.frequencyBinCount);
-                createParticles();
+                for(let i=0; i<particleCount; i++) particles.push(new Particle());
                 animate();
             }
         }
@@ -112,24 +149,27 @@
             requestAnimationFrame(animate);
             analyser.getByteFrequencyData(dataArray);
 
-            // Get average volume and dominant frequency peak
             let sum = 0;
-            let maxVal = 0;
-            let freqPeak = 0;
-            for (let i = 0; i < dataArray.length; i++) {
+            let peakFreq = 0;
+            let peakVal = 0;
+            for(let i=0; i<dataArray.length; i++) {
                 sum += dataArray[i];
-                if (dataArray[i] > maxVal) {
-                    maxVal = dataArray[i];
-                    freqPeak = i;
+                if(dataArray[i] > peakVal) {
+                    peakVal = dataArray[i];
+                    peakFreq = i;
                 }
             }
             let avg = sum / dataArray.length;
 
-            ctx.fillStyle = 'rgba(10, 10, 10, 0.15)'; // Motion blur trail
+            // Update UI
+            freqEl.innerText = `${peakFreq * 40} Hz`;
+            gainEl.innerText = `${Math.round(avg)} dB`;
+
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.2)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             particles.forEach(p => {
-                p.update(avg, freqPeak);
+                p.update(avg, peakFreq);
                 p.draw();
             });
         }
@@ -137,7 +177,6 @@
         window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            createParticles();
         });
     </script>
 </body>
